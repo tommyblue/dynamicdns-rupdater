@@ -2,7 +2,7 @@ use actix_web::{middleware, post, web, App, HttpRequest, HttpResponse, HttpServe
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use reqwest::json
+// use reqwest::json
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -22,7 +22,7 @@ struct Args {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct IpAddress {
-    ip: String,
+    ip_address: String,
 }
 
 #[post("/my_ip")]
@@ -69,10 +69,18 @@ async fn main() -> std::io::Result<()> {
     }
 
     if args.client {
-        println!("Client!");
+        let url = format!("http://{0}:{1}/my_ip", args.host, args.port);
+        println!("URL => {url}");
         let client = reqwest::Client::new();
-        let res = client.post(args.host).send().await?.json::<IpAddress>().await?;
-        println!("My IP: {}", res.ip);
+        let res = client
+            .post(url)
+            .send()
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
+            .json::<IpAddress>()
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        println!("My IP: {}", res.ip_address);
     }
 
     Ok(())
