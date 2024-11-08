@@ -1,8 +1,8 @@
 use actix_web::{middleware, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use clap::Parser;
+use dns_lookup::lookup_host;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-// use reqwest::json
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -18,6 +18,15 @@ struct Args {
 
     #[arg(long, default_value_t = 8080)]
     port: u16,
+
+    #[arg(long)]
+    hostname: String,
+
+    #[arg(long)]
+    username: String,
+
+    #[arg(long)]
+    password: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,6 +78,25 @@ async fn main() -> std::io::Result<()> {
     }
 
     if args.client {
+        if args.hostname.is_empty() {
+            log::error!("hostname is required");
+            std::process::exit(1);
+        }
+
+        if args.username.is_empty() {
+            log::error!("username is required");
+            std::process::exit(1);
+        }
+
+        if args.password.is_empty() {
+            log::error!("password is required");
+            std::process::exit(1);
+        }
+
+        let ips: Vec<std::net::IpAddr> = lookup_host(&args.hostname).unwrap();
+        let ip = ips.first().unwrap();
+        log::info!("IP address of {0} is {1}", args.hostname, ip);
+
         let url = format!("http://{0}:{1}/my_ip", args.host, args.port);
         println!("URL => {url}");
         let client = reqwest::Client::new();
@@ -80,7 +108,21 @@ async fn main() -> std::io::Result<()> {
             .json::<IpAddress>()
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        println!("My IP: {}", res.ip_address);
+
+        if res.ip_address != ip.to_string() {
+            log::info!("IP address does not match, updating...");
+
+            let update_url = format!(
+                "http://api.dynu.com/nic/update?myip={0}&username={1}&password={2}",
+                res.ip_address, args.username, args.password
+            );
+
+            reqwest::get(&update_url)
+                .await
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+            log::info!("IP address updated to {0}", res.ip_address);
+        }
     }
 
     Ok(())
